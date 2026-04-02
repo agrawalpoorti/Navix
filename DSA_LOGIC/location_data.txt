@@ -1,0 +1,51 @@
+Delhi Gurgaon 30 40 60
+
+Delhi Noida 25 35 50
+
+Delhi Ghaziabad 20 30 40
+
+Delhi Sonipat 45 60 90
+
+Gurgaon Faridabad 35 50 70
+
+Gurgaon Jaipur 280 300 560
+
+Noida Faridabad 20 30 40
+
+Noida Ghaziabad 15 25 30
+
+Noida Agra 180 200 360
+
+Ghaziabad Meerut 70 90 140
+
+Ghaziabad Haridwar 220 260 440
+
+Faridabad Mathura 120 150 240
+
+Sonipat Panipat 60 80 120
+
+Panipat Karnal 35 50 70
+
+Karnal Kurukshetra 40 55 80
+
+Kurukshetra Ambala 45 60 90
+
+Ambala Chandigarh 50 65 100
+
+Chandigarh Shimla 110 150 220
+
+Jaipur Ajmer 135 160 270
+
+Ajmer Udaipur 260 300 520
+
+Agra Kanpur 280 320 560
+
+Kanpur Lucknow 90 110 180
+
+Lucknow Varanasi 320 360 640
+
+Meerut Dehradun 150 180 300
+
+Dehradun Haridwar 50 70 100
+
+Haridwar Rishikesh 25 40 50
