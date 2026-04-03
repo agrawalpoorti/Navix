@@ -1,0 +1,103 @@
+<% layout("/layouts/boilerplate.ejs") %>
+
+<section class="history-section">
+    <div class="history-header">
+        <h1 class="history-title">Past Route History</h1>
+        <div class="history-actions">
+            <button class="submit-btn history-btn" id="clearAllBtn">Clear All</button>
+        </div>
+    </div>
+
+    <p class="history-note">
+        Entries are read-only. You can only delete history items.
+    </p>
+
+    <div class="history-list" id="historyList"></div>
+    <p class="history-empty" id="historyEmpty"></p>
+</section>
+
+<script>
+    function formatDate(isoString) {
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) return 'Unknown time';
+        return date.toLocaleString();
+    }
+
+    function buildCard(entry) {
+        const card = document.createElement('article');
+        const preference = String(entry.preference || 'distance').toLowerCase();
+        card.className = `history-card pref-${preference}`;
+
+        const pathLabel = Array.isArray(entry.path) && entry.path.length
+            ? entry.path.join(' -> ')
+            : 'Path unavailable';
+
+        card.innerHTML = `
+            <div class="history-card-top">
+                <p class="history-route">${entry.source} -> ${entry.destination}</p>
+                <span class="history-tag ${entry.liveData ? 'live' : 'fallback'}">
+                    ${entry.liveData ? 'Live' : 'Fallback'}
+                </span>
+            </div>
+            <p class="history-meta">Preference: <strong>${preference}</strong></p>
+            <p class="history-meta">Distance: ${entry.totalDistance ?? '--'} km | Time: ${entry.totalTime ?? '--'} mins | Cost: INR ${entry.totalCost ?? '--'} | Stops: ${entry.stops ?? '--'}</p>
+            <p class="history-path">${pathLabel}</p>
+            <div class="history-card-bottom">
+                <span class="history-time">${formatDate(entry.createdAt)}</span>
+                <button class="history-delete-btn" data-id="${entry.id}">Delete</button>
+            </div>
+        `;
+
+        return card;
+    }
+
+    async function fetchHistory() {
+        const response = await fetch('/api/history');
+        if (!response.ok) throw new Error('Failed to load history');
+        const payload = await response.json();
+        return Array.isArray(payload.history) ? payload.history : [];
+    }
+
+    async function deleteEntry(id) {
+        await fetch(`/api/history/${id}`, { method: 'DELETE' });
+        await renderHistory();
+    }
+
+    async function clearAll() {
+        await fetch('/api/history', { method: 'DELETE' });
+        await renderHistory();
+    }
+
+    async function renderHistory() {
+        const historyList = document.getElementById('historyList');
+        const historyEmpty = document.getElementById('historyEmpty');
+        historyList.innerHTML = '';
+
+        let entries = [];
+        try {
+            entries = await fetchHistory();
+        } catch (_) {
+            historyEmpty.textContent = 'Could not load history right now.';
+            return;
+        }
+
+        if (!entries.length) {
+            historyEmpty.textContent = 'No history found yet. Plan a route to create one.';
+            return;
+        }
+
+        historyEmpty.textContent = '';
+        entries.forEach((entry) => {
+            historyList.appendChild(buildCard(entry));
+        });
+
+        document.querySelectorAll('.history-delete-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                deleteEntry(btn.dataset.id);
+            });
+        });
+    }
+
+    document.getElementById('clearAllBtn').addEventListener('click', clearAll);
+    renderHistory();
+</script>

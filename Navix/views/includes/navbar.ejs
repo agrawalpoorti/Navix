@@ -8,15 +8,22 @@
   <!-- Center: Links -->
   <ul class="nav-links">
     <li><a href="http://localhost:8080/">Home</a></li>
-    <li><a href="">Plan Route</a></li>
+    <li><a href="/plan">Plan Route</a></li>
     <li><a href="http://localhost:8080/about">About</a></li>
-    <li><a href="#">Contact</a></li>
-    <li><a href="#">Past History</a></li>
+    <li><a href="/contact">Contact</a></li>
+    <li><a href="/history">Past History</a></li>
   </ul>
 
   <!-- Right: Auth -->
   <div class="nav-right">
-    <a href="http://localhost:8080/login" class="login">Login</a>
-    <a href="#" class="signup-btn">Sign Up</a>
+    <% if (currentUser) { %>
+      <span class="login">Hi, <%= currentUser.name %></span>
+      <form method="POST" action="/auth/logout" class="logout-form">
+        <button type="submit" class="signup-btn logout-btn">Logout</button>
+      </form>
+    <% } else { %>
+      <a href="/login" class="login">Login</a>
+      <a href="/signup" class="signup-btn">Sign Up</a>
+    <% } %>
   </div>
 </nav>

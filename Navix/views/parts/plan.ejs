@@ -1,0 +1,177 @@
+<% layout("/layouts/boilerplate.ejs") %>
+
+<video class="bg-video" autoplay muted loop playsinline>
+  <source src="/images_videos/plan.mp4" type="video/mp4">
+</video>
+<div class="overlay"></div>
+
+<section class="plan-section">
+    <div class="plan-card">
+        <h1 class="plan-title">Plan Your Route</h1>
+        <p class="plan-subtitle">Find the best path between cities</p>
+
+        <div class="form-group">
+            <label>Source City</label>
+            <select id="source">
+                <option value="">-- Select Source --</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Destination City</label>
+            <select id="destination">
+                <option value="">-- Select Destination --</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Preference</label>
+            <div class="pref-toggle">
+                <button class="pref-btn active" data-value="distance">Distance</button>
+                <button class="pref-btn" data-value="time">Time</button>
+                <button class="pref-btn" data-value="cost">Cost</button>
+            </div>
+        </div>
+
+        <button class="submit-btn" id="submitBtn">Find Route</button>
+        <p class="error-msg" id="errorMsg"></p>
+    </div>
+</section>
+
+<script>
+    let selectedPreference = "distance";
+    const sourceSelect = document.getElementById('source');
+    const destinationSelect = document.getElementById('destination');
+    const errorMsg = document.getElementById('errorMsg');
+
+    function fillCityOptions(selectEl, cities, placeholder) {
+        selectEl.innerHTML = '';
+        const first = document.createElement('option');
+        first.value = '';
+        first.textContent = placeholder;
+        selectEl.appendChild(first);
+
+        cities.forEach((city) => {
+            const option = document.createElement('option');
+            option.value = city;
+            option.textContent = city;
+            selectEl.appendChild(option);
+        });
+    }
+
+    async function loadCities() {
+        try {
+            const response = await fetch('/api/graph-meta');
+            const payload = await response.json();
+            const cities = Array.isArray(payload.cities) ? payload.cities : [];
+            fillCityOptions(sourceSelect, cities, '-- Select Source --');
+            fillCityOptions(destinationSelect, cities, '-- Select Destination --');
+        } catch (_) {
+            errorMsg.innerText = 'Could not load city list. Please refresh the page.';
+        }
+    }
+
+    loadCities();
+
+    document.querySelectorAll('.pref-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.pref-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedPreference = btn.dataset.value;
+        });
+    });
+
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+        const source      = sourceSelect.value;
+        const destination = destinationSelect.value;
+        const preference  = selectedPreference;
+        const submitBtn   = document.getElementById('submitBtn');
+
+        // Validation
+        if (!source || !destination) {
+            errorMsg.innerText = "Please select both source and destination.";
+            return;
+        }
+        if (source === destination) {
+            errorMsg.innerText = "Source and destination cannot be the same.";
+            return;
+        }
+
+        // Loading state
+        submitBtn.innerText = "Finding...";
+        submitBtn.disabled  = true;
+        errorMsg.innerText  = "";
+
+        const requestBody = { source, destination, preference };
+
+        async function saveRouteToHistory(routeResult) {
+            try {
+                await fetch('/api/history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source,
+                        destination,
+                        preference,
+                        totalDistance: routeResult.totalDistance,
+                        totalTime: routeResult.totalTime,
+                        totalCost: routeResult.totalCost,
+                        stops: routeResult.stops,
+                        path: Array.isArray(routeResult.path) ? routeResult.path : [],
+                        liveData: Boolean(routeResult.liveData)
+                    })
+                });
+            } catch (_) {
+                // Non-blocking: route result should still render even if history save fails.
+            }
+        }
+
+        async function callRouteApi(endpoint) {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (_) {}
+
+            return { response, data };
+        }
+
+        try {
+            let routeResponse;
+
+            try {
+                routeResponse = await callRouteApi('/api/route-live');
+            } catch (_) {
+                routeResponse = await callRouteApi('/api/route');
+            }
+
+            const { response, data } = routeResponse;
+
+            if (response.status === 404) {
+                window.location.href = '/noroute';
+            } else if (!response.ok) {
+                const fallback = await callRouteApi('/api/route');
+                if (fallback.response.ok) {
+                    await saveRouteToHistory(fallback.data);
+                    sessionStorage.setItem('routeResult', JSON.stringify(fallback.data));
+                    sessionStorage.setItem('routeQuery', JSON.stringify({ source, destination, preference }));
+                    window.location.href = '/result';
+                    return;
+                }
+                window.location.href = '/error';
+            } else {
+                await saveRouteToHistory(data);
+                sessionStorage.setItem('routeResult', JSON.stringify(data));
+                sessionStorage.setItem('routeQuery', JSON.stringify({ source, destination, preference }));
+                window.location.href = '/result';
+            }
+        } catch (e) {
+            window.location.href = '/error';
+        }
+    });
+</script>

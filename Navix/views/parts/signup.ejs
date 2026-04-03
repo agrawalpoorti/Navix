@@ -1,0 +1,39 @@
+<% layout('layouts/boilerplate.ejs') %>
+
+<video autoplay muted loop class="bg-video">
+  <source src="/images_videos/login_page.mp4" type="video/mp4">
+</video>
+
+<div class="overlay"></div>
+
+<div class="login-page">
+  <div class="login-box">
+    <h2>Create Account</h2>
+    <% if (typeof req !== 'undefined' && req.query && req.query.error) { %>
+      <p class="auth-error"><%= req.query.error %></p>
+    <% } %>
+
+    <form method="POST" action="/auth/signup">
+      <div class="input-box">
+        <input type="text" name="name" required>
+        <label>Name</label>
+      </div>
+
+      <div class="input-box">
+        <input type="email" name="email" required>
+        <label>Email</label>
+      </div>
+
+      <div class="input-box">
+        <input type="password" name="password" minlength="6" required>
+        <label>Password (min 6 chars)</label>
+      </div>
+
+      <button class="btn" type="submit">Sign Up</button>
+
+      <p class="extra">
+        Already have an account? <a href="/login">Login</a>
+      </p>
+    </form>
+  </div>
+</div>

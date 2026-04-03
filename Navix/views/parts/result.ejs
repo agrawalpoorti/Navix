@@ -1,0 +1,293 @@
+<% layout("/layouts/boilerplate.ejs") %>
+
+<section class="result-section">
+    <h1 class="result-title">Your Route</h1>
+
+    <div class="query-info" id="queryInfo"></div>
+    <div class="data-source-badge" id="dataSourceBadge"></div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <span class="stat-label">Total Distance</span>
+            <span class="stat-value" id="totalDistance">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Total Time</span>
+            <span class="stat-value" id="totalTime">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Total Cost</span>
+            <span class="stat-value" id="totalCost">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Stops</span>
+            <span class="stat-value" id="stops">--</span>
+        </div>
+    </div>
+
+    <div class="route-viz-card">
+        <h2 class="route-viz-title">Path Visualization</h2>
+        <p class="route-viz-subtitle">From source to destination with each hop highlighted.</p>
+        <div class="route-stepper" id="routeStepper"></div>
+    </div>
+
+    <div class="legs-grid" id="legsGrid"></div>
+
+    <div class="path-display" id="pathDisplay"></div>
+
+    <div class="map-card">
+        <h2 class="route-viz-title">Route On Map</h2>
+        <p class="route-viz-subtitle">Geographic path rendered with OpenStreetMap.</p>
+        <div id="route-map"></div>
+        <p class="map-fallback" id="mapFallback"></p>
+    </div>
+
+    <div id="graph-container"></div>
+
+    <button class="submit-btn" onclick="window.location.href='/plan'">Plan Another Route</button>
+</section>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+    const resultRaw = sessionStorage.getItem('routeResult');
+    const queryRaw = sessionStorage.getItem('routeQuery');
+
+    if (!resultRaw || !queryRaw) {
+        window.location.href = '/plan';
+    }
+
+    const result = JSON.parse(resultRaw);
+    const query = JSON.parse(queryRaw);
+    const allowedPreferences = ['distance', 'time', 'cost'];
+    const normalizedPreference = String(query.preference || '').toLowerCase();
+    const activePreference = allowedPreferences.includes(normalizedPreference)
+        ? normalizedPreference
+        : 'distance';
+
+    document.body.classList.add('result-theme', `result-theme-${activePreference}`);
+
+    const themePalette = {
+        distance: { accent: '#38BDF8', highlight: '#00e5a8' },
+        time: { accent: '#34D399', highlight: '#6EE7B7' },
+        cost: { accent: '#F59E0B', highlight: '#FCD34D' }
+    };
+    const palette = themePalette[activePreference];
+    const graphMeta = result.graph || {};
+    const allEdgesData = Array.isArray(graphMeta.edges) ? graphMeta.edges : [];
+    const allCities = Array.isArray(graphMeta.cities) ? graphMeta.cities : [];
+
+    const path = Array.isArray(result.path) ? result.path : [];
+    const totalDistance = result.totalDistance ?? 0;
+    const totalTime = result.totalTime ?? 0;
+    const totalCost = result.totalCost ?? 0;
+    const stops = Number.isFinite(result.stops) ? result.stops : Math.max(path.length - 1, 0);
+
+    if (!path.length) {
+        window.location.href = '/noroute';
+    }
+
+    const edgeMap = new Map();
+    const edgeKey = (a, b) => [a, b].sort().join('|');
+    const mapGeocodeCache = new Map();
+
+    allEdgesData.forEach(edge => {
+        edgeMap.set(edgeKey(edge.from, edge.to), edge);
+    });
+
+    const getLeg = (from, to) => edgeMap.get(edgeKey(from, to));
+
+    async function geocodeCityForMap(city) {
+        if (mapGeocodeCache.has(city)) return mapGeocodeCache.get(city);
+        const query = encodeURIComponent(`${city}, India`);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${query}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Geocoding failed for ${city}`);
+        const data = await response.json();
+        if (!Array.isArray(data) || data.length === 0) throw new Error(`Coordinates unavailable for ${city}`);
+
+        const point = [Number(data[0].lat), Number(data[0].lon)];
+        mapGeocodeCache.set(city, point);
+        return point;
+    }
+
+    async function renderRouteMap(pathCities, accentColor) {
+        const fallbackEl = document.getElementById('mapFallback');
+        const mapContainer = document.getElementById('route-map');
+
+        if (!window.L) {
+            fallbackEl.textContent = 'Map library could not load.';
+            return;
+        }
+        if (!Array.isArray(pathCities) || pathCities.length < 2) {
+            fallbackEl.textContent = 'Not enough points to render a map.';
+            return;
+        }
+
+        try {
+            const coords = [];
+            for (const city of pathCities) {
+                const point = await geocodeCityForMap(city);
+                coords.push(point);
+            }
+
+            const map = L.map(mapContainer, { zoomControl: true });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            L.polyline(coords, {
+                color: accentColor,
+                weight: 5,
+                opacity: 0.9
+            }).addTo(map);
+
+            coords.forEach((coord, index) => {
+                const city = pathCities[index];
+                const marker = L.circleMarker(coord, {
+                    radius: index === 0 || index === coords.length - 1 ? 7 : 5,
+                    color: '#ffffff',
+                    weight: 2,
+                    fillColor: accentColor,
+                    fillOpacity: 0.95
+                }).addTo(map);
+
+                marker.bindPopup(`<b>${city}</b><br>Stop ${index + 1}`);
+            });
+
+            map.fitBounds(coords, { padding: [30, 30] });
+            fallbackEl.textContent = '';
+        } catch (e) {
+            fallbackEl.textContent = `Map unavailable: ${e.message}`;
+        }
+    }
+
+    document.getElementById('queryInfo').innerHTML =
+        `<span>${query.source}</span> → <span>${query.destination}</span> &nbsp;|&nbsp; Preference: <span>${activePreference}</span>`;
+
+    const dataSourceBadge = document.getElementById('dataSourceBadge');
+    if (result.liveData) {
+        dataSourceBadge.textContent = 'Live data enabled (OpenStreetMap + OSRM)';
+        dataSourceBadge.classList.add('live');
+    } else {
+        dataSourceBadge.textContent = result.liveNote || 'Using base engine data (live unavailable)';
+        dataSourceBadge.classList.add('fallback');
+    }
+
+    document.getElementById('totalDistance').innerText = `${totalDistance} km`;
+    document.getElementById('totalTime').innerText = `${totalTime} mins`;
+    document.getElementById('totalCost').innerText = `₹${totalCost}`;
+    document.getElementById('stops').innerText = stops;
+
+    const pathDisplay = document.getElementById('pathDisplay');
+    path.forEach((city, i) => {
+        const node = document.createElement('span');
+        node.classList.add('path-node');
+        node.innerText = city;
+        pathDisplay.appendChild(node);
+
+        if (i < path.length - 1) {
+            const arrow = document.createElement('span');
+            arrow.classList.add('path-arrow');
+            arrow.innerText = ' → ';
+            pathDisplay.appendChild(arrow);
+        }
+    });
+
+    const routeStepper = document.getElementById('routeStepper');
+    path.forEach((city, i) => {
+        const step = document.createElement('div');
+        step.className = 'step-item';
+
+        const badge = document.createElement('div');
+        badge.className = 'step-badge';
+        badge.innerText = i + 1;
+
+        const label = document.createElement('p');
+        label.className = 'step-label';
+        label.innerText = city;
+
+        step.appendChild(badge);
+        step.appendChild(label);
+        routeStepper.appendChild(step);
+
+        if (i < path.length - 1) {
+            const connector = document.createElement('div');
+            connector.className = 'step-connector';
+
+            const leg = getLeg(path[i], path[i + 1]);
+            connector.innerHTML = leg
+                ? `<span>${leg.distance} km</span><span>${leg.time} min</span><span>₹${leg.cost}</span>`
+                : '<span>Connected</span>';
+
+            routeStepper.appendChild(connector);
+        }
+    });
+
+    const legsGrid = document.getElementById('legsGrid');
+    for (let i = 0; i < path.length - 1; i++) {
+        const from = path[i];
+        const to = path[i + 1];
+        const leg = getLeg(from, to);
+
+        const card = document.createElement('div');
+        card.className = 'leg-card';
+
+        card.innerHTML = `
+            <p class="leg-route">${from} → ${to}</p>
+            <p class="leg-meta">${leg ? `${leg.distance} km` : '-- km'} · ${leg ? `${leg.time} min` : '-- min'} · ${leg ? `₹${leg.cost}` : '₹--'}</p>
+        `;
+
+        legsGrid.appendChild(card);
+    }
+
+    if (window.vis && window.vis.Network && allCities.length) {
+        const nodes = new vis.DataSet(allCities.map(city => ({
+            id: city,
+            label: city,
+            color: { background: '#1a1a2e', border: palette.accent },
+            font: { color: '#ffffff' }
+        })));
+
+        const edges = new vis.DataSet(allEdgesData.map((edge, index) => ({
+            id: index,
+            from: edge.from,
+            to: edge.to,
+            title: `${edge.distance} km | ${edge.time} min | ₹${edge.cost}`,
+            color: { color: '#444444' },
+            width: 1.5
+        })));
+
+        path.forEach(city => {
+            nodes.update({
+                id: city,
+                color: { background: palette.accent, border: '#ffffff' },
+                font: { color: '#000000' }
+            });
+        });
+
+        for (let i = 0; i < path.length - 1; i++) {
+            const from = path[i];
+            const to = path[i + 1];
+            edges.forEach(edge => {
+                if ((edge.from === from && edge.to === to) || (edge.from === to && edge.to === from)) {
+                    edges.update({ id: edge.id, color: { color: palette.highlight }, width: 4 });
+                }
+            });
+        }
+
+        const container = document.getElementById('graph-container');
+        new vis.Network(container, { nodes, edges }, {
+            physics: { enabled: true },
+            edges: { smooth: true },
+            interaction: { hover: true }
+        });
+    } else {
+        document.getElementById('graph-container').innerHTML =
+            '<p class="graph-fallback">Graph view unavailable, but your path timeline is shown above.</p>';
+    }
+
+    renderRouteMap(path, palette.accent);
+</script>
