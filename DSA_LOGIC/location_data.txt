@@ -1,51 +1,128 @@
 Delhi Gurgaon 30 40 60
-
 Delhi Noida 25 35 50
-
 Delhi Ghaziabad 20 30 40
-
 Delhi Sonipat 45 60 90
-
+Delhi Faridabad 35 45 70
+Delhi Rohtak 70 90 140
+Delhi Bahadurgarh 35 50 70
 Gurgaon Faridabad 35 50 70
-
 Gurgaon Jaipur 280 300 560
-
+Gurgaon Rewari 55 70 110
 Noida Faridabad 20 30 40
-
 Noida Ghaziabad 15 25 30
-
 Noida Agra 180 200 360
-
 Ghaziabad Meerut 70 90 140
-
 Ghaziabad Haridwar 220 260 440
-
+Ghaziabad Bulandshahr 65 80 130
 Faridabad Mathura 120 150 240
-
+Faridabad Palwal 40 55 80
 Sonipat Panipat 60 80 120
-
+Sonipat Rohtak 45 60 90
 Panipat Karnal 35 50 70
-
 Karnal Kurukshetra 40 55 80
-
+Karnal Yamunanagar 60 80 120
 Kurukshetra Ambala 45 60 90
-
+Kurukshetra Pehowa 30 45 60
 Ambala Chandigarh 50 65 100
-
+Ambala Ludhiana 120 150 240
+Ambala Yamunanagar 45 60 90
 Chandigarh Shimla 110 150 220
-
+Chandigarh Ludhiana 100 120 200
+Chandigarh Patiala 65 80 130
+Chandigarh Ropar 45 60 90
+Shimla Manali 260 320 520
+Shimla Kullu 220 280 440
+Ludhiana Amritsar 140 170 280
+Ludhiana Jalandhar 80 100 160
+Ludhiana Patiala 50 65 100
+Amritsar Pathankot 110 140 220
+Amritsar Jalandhar 80 100 160
+Jalandhar Pathankot 90 115 180
+Pathankot Dharamshala 90 120 180
+Dharamshala Manali 250 310 500
+Manali Kullu 40 55 80
 Jaipur Ajmer 135 160 270
-
+Jaipur Alwar 150 180 300
+Jaipur Bharatpur 180 210 360
+Jaipur Kota 240 280 480
+Jaipur Sikar 110 140 220
 Ajmer Udaipur 260 300 520
-
+Ajmer Pushkar 15 25 30
+Ajmer Kota 200 240 400
+Udaipur Kota 175 210 350
+Udaipur Chittorgarh 115 140 230
+Udaipur Ahmedabad 260 300 520
+Kota Agra 240 280 480
+Kota Bhopal 320 370 640
 Agra Kanpur 280 320 560
-
+Agra Mathura 55 70 110
+Agra Gwalior 120 150 240
+Mathura Agra 55 70 110
+Mathura Bharatpur 45 60 90
 Kanpur Lucknow 90 110 180
-
+Kanpur Allahabad 200 240 400
+Kanpur Jhansi 200 240 400
 Lucknow Varanasi 320 360 640
-
+Lucknow Allahabad 200 240 400
+Lucknow Gorakhpur 270 310 540
+Varanasi Allahabad 130 160 260
+Varanasi Gorakhpur 200 240 400
+Varanasi Patna 280 320 560
+Allahabad Bhopal 380 430 760
+Allahabad Jabalpur 340 390 680
+Gorakhpur Patna 250 290 500
+Patna Gaya 100 125 200
+Patna Muzaffarpur 75 95 150
+Gaya Varanasi 250 290 500
 Meerut Dehradun 150 180 300
-
+Meerut Muzaffarnagar 60 80 120
+Muzaffarnagar Haridwar 90 115 180
 Dehradun Haridwar 50 70 100
-
+Dehradun Mussoorie 35 50 70
 Haridwar Rishikesh 25 40 50
+Haridwar Roorkee 35 50 70
+Rishikesh Tehri 75 100 150
+Roorkee Saharanpur 40 55 80
+Saharanpur Muzaffarnagar 55 70 110
+Rohtak Hisar 95 120 190
+Rohtak Bhiwani 65 85 130
+Hisar Sirsa 90 115 180
+Hisar Fatehabad 45 60 90
+Rewari Bhiwani 80 100 160
+Rewari Alwar 100 125 200
+Gwalior Jhansi 100 125 200
+Gwalior Agra 120 150 240
+Jhansi Bhopal 280 320 560
+Jhansi Kanpur 200 240 400
+Bhopal Indore 200 240 400
+Bhopal Jabalpur 290 340 580
+Indore Ahmedabad 390 440 780
+Indore Ujjain 55 70 110
+Ahmedabad Surat 265 300 530
+Ahmedabad Vadodara 110 135 220
+Surat Vadodara 150 180 300
+Surat Mumbai 280 320 560
+Vadodara Mumbai 390 440 780
+Mumbai Pune 150 180 300
+Mumbai Nashik 165 200 330
+Pune Nashik 210 250 420
+Pune Solapur 240 280 480
+Bulandshahr Aligarh 45 60 90
+Aligarh Agra 90 115 180
+Aligarh Mathura 55 70 110
+Palwal Alwar 90 115 180
+Palwal Mathura 65 85 130
+Patiala Bathinda 115 140 230
+Bathinda Sirsa 110 135 220
+Yamunanagar Saharanpur 55 70 110
+Ropar Ludhiana 45 60 90
+Chittorgarh Kota 115 140 230
+Chittorgarh Udaipur 115 140 230
+Muzaffarpur Patna 75 95 150
+Tehri Rishikesh 75 100 150
+Mussoorie Dehradun 35 50 70
+Jabalpur Nagpur 320 370 640
+Nagpur Hyderabad 500 560 1000
+Hyderabad Bangalore 570 630 1140
+Bangalore Chennai 350 400 700
+Chennai Hyderabad 630 700 1260
