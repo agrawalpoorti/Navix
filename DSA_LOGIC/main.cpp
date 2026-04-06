@@ -3,54 +3,9 @@
 #include<vector>
 #include<fstream>
 #include<climits>
+#include<queue>
+#include<algorithm>
 using namespace std;
-
-class min_heap {
-  public:
-    vector<pair<int,string>> h;
-    int idx = 0;
-
-    void heapify_upward(int i) {
-        while(i > 0 && h[(i-1)/2].first > h[i].first) {
-            swap(h[(i-1)/2], h[i]);
-            i = (i-1)/2;
-        }
-    }
-
-    void heapify_downward(int i) {
-        int smallest = i;
-        int left  = 2*i+1;
-        int right = 2*i+2;
-        if(left  < idx && h[left].first  < h[smallest].first) smallest = left;
-        if(right < idx && h[right].first < h[smallest].first) smallest = right;
-        if(smallest != i) {
-            swap(h[smallest], h[i]);
-            heapify_downward(smallest);
-        }
-    }
-
-    void insert(pair<int,string> value) {
-        h.push_back(value);
-        int i = idx;
-        idx++;
-        heapify_upward(i);
-    }
-
-    pair<int,string> get_min() {
-        return h[0];
-    }
-
-    void delete_root() {
-        swap(h[0], h[idx-1]);
-        h.pop_back();
-        idx--;
-        if(idx > 0) heapify_downward(0);
-    }
-
-    bool empty() {
-        return idx == 0;
-    }
-};
 
 class edge {
   public:
@@ -90,13 +45,13 @@ void dijkstra(string start, string end, string pref, map<string, vector<edge>>& 
     dist[start] = 0;
 
     // Step 3 — Insert source into min heap
-    min_heap pq;
-    pq.insert({0, start});
+    priority_queue<pair<int,string>, vector<pair<int,string>>, greater<pair<int,string>>> pq;
+    pq.push({0, start});
 
     // Step 4 — Process nodes
     while(!pq.empty()) {
-        auto [d, u] = pq.get_min();
-        pq.delete_root();
+        auto [d, u] = pq.top();
+        pq.pop();
 
         // Skip if we already found a better path
         if(d > dist[u]) continue;
@@ -118,7 +73,7 @@ void dijkstra(string start, string end, string pref, map<string, vector<edge>>& 
             if(dist[u] != INT_MAX && dist[u] + weight < dist[neighbor]) {
                 dist[neighbor]   = dist[u] + weight;
                 parent[neighbor] = u;
-                pq.insert({dist[neighbor], neighbor});
+                pq.push({dist[neighbor], neighbor});
             }
         }
     }
@@ -198,7 +153,10 @@ int main() {
         // placeholder — see below for CLI args version
     }
 
-    cin >> start >> end >> pref;
+    if(!(cin >> start >> end >> pref)) {
+        cerr << "Error: expected input format -> <source> <destination> <preference>" << endl;
+        return 1;
+    }
 
     // Step 3 — Validate preference input
     if(pref != "distance" && pref != "time" && pref != "cost") {
