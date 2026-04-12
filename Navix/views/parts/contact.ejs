@@ -31,5 +31,69 @@
                 <span>Email Us</span>
             </a>
         </div>
+
+        <div class="feedback-block">
+            <h2 class="feedback-title">Feedback Form</h2>
+            <% if (currentUser) { %>
+                <p class="feedback-subtitle">Signed in as <strong><%= currentUser.name %></strong> (<%= currentUser.email %>)</p>
+                <form id="feedbackForm" class="feedback-form" action="/feedback" method="POST">
+                    <textarea id="feedbackMessage" name="message" rows="5" maxlength="2000" placeholder="Write your feedback here..." required></textarea>
+                    <button class="submit-btn feedback-submit-btn" type="submit">Submit Feedback</button>
+                    <p id="feedbackStatus" class="feedback-status"></p>
+                </form>
+            <% } else { %>
+                <p class="feedback-login-note">Please <a href="/login">login</a> to submit feedback.</p>
+            <% } %>
+        </div>
     </div>
 </section>
+
+<script>
+    const feedbackForm = document.getElementById('feedbackForm');
+    if (feedbackForm) {
+        const feedbackMessage = document.getElementById('feedbackMessage');
+        const feedbackStatus = document.getElementById('feedbackStatus');
+
+        feedbackForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            feedbackStatus.textContent = '';
+
+            const message = feedbackMessage.value.trim();
+            if (!message) {
+                feedbackStatus.textContent = 'Please enter feedback before submitting.';
+                feedbackStatus.className = 'feedback-status error';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                const contentType = response.headers.get('content-type') || '';
+                let data = {};
+
+                if (contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    data = { error: text ? `Unexpected response (${response.status})` : 'Unexpected response format' };
+                }
+
+                if (!response.ok) {
+                    feedbackStatus.textContent = data.error || 'Failed to submit feedback.';
+                    feedbackStatus.className = 'feedback-status error';
+                    return;
+                }
+
+                feedbackStatus.textContent = 'Thank you! Your feedback was submitted.';
+                feedbackStatus.className = 'feedback-status success';
+                feedbackForm.reset();
+            } catch (err) {
+                feedbackStatus.textContent = `Network error: ${err.message || 'Please try again.'}`;
+                feedbackStatus.className = 'feedback-status error';
+            }
+        });
+    }
+</script>

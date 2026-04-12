@@ -54,12 +54,13 @@ router.post("/signup", async (req, res) => {
         const user = await User.create({
             name: String(name).trim(),
             email: normalizedEmail,
-            passwordHash
+            passwordHash,
+            password
         });
 
         setAuthCookie(res, user);
         await moveGuestHistoryToUser(req.cookies.guestId, user._id);
-        return res.redirect("/history");
+        return res.redirect("/historfy");
     } catch (_) {
         return res.redirect("/signup?error=Signup%20failed");
     }

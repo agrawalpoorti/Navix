@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const RouteHistory = require('../models/RouteHistory');
+const Feedback = require('../models/Feedback');
 
 const enginePath = '/Users/aanchalbhaskarshukla/Desktop/Navix/DSA_LOGIC/navix_engine';
 const geocodeCache = new Map();
@@ -383,6 +384,33 @@ router.delete('/history', async (req, res) => {
         return res.status(200).json({ success: true });
     } catch (e) {
         return res.status(500).json({ error: 'Failed to clear history', details: e.message });
+    }
+});
+
+router.post('/feedback', async (req, res) => {
+    try {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({ error: 'Login required to submit feedback' });
+        }
+
+        const rawMessage = String(req.body.message || '').trim();
+        if (!rawMessage) {
+            return res.status(400).json({ error: 'Feedback message cannot be empty' });
+        }
+        if (rawMessage.length > 2000) {
+            return res.status(400).json({ error: 'Feedback message is too long' });
+        }
+
+        const saved = await Feedback.create({
+            userId: req.user.id,
+            userName: req.user.name || 'Unknown User',
+            userEmail: req.user.email || '',
+            message: rawMessage
+        });
+
+        return res.status(201).json({ id: String(saved._id), success: true });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to submit feedback', details: e.message });
     }
 });
 
