@@ -83,7 +83,7 @@ app.get("/history", (req, res) => res.render("parts/history.ejs"));
 // Error page
 app.use((req, res) => res.status(404).render("parts/error.ejs"));
 
-let port = 8080;
+let port = process.env.PORT || 8080;
 app.listen(port, () => {
     console.log("Server is running at port ", port);
 });

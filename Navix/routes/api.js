@@ -6,7 +6,7 @@ const path = require('path');
 const RouteHistory = require('../models/RouteHistory');
 const Feedback = require('../models/Feedback');
 
-const enginePath = '/Users/aanchalbhaskarshukla/Desktop/Navix/DSA_LOGIC/navix_engine';
+const enginePath = path.join(__dirname, '../../DSA_LOGIC/navix_engine');
 const geocodeCache = new Map();
 
 function runEngineRoute(source, destination, preference) {
