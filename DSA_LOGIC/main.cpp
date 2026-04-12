@@ -1,181 +1,170 @@
-#include<iostream>
-#include<map>
-#include<vector>
-#include<fstream>
-#include<climits>
-#include<queue>
-#include<algorithm>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <climits>
+#include <string>
+#include "data_structures/Graph.h"
+#include "data_structures/MinHeap.h"
+
 using namespace std;
 
-class edge {
-  public:
-    string destination;
-    int distance;
-    int time;
-    int cost;
-
-    edge(string dest, int dist, int t, int c) {
-        destination = dest;
-        distance    = dist;
-        time        = t;
-        cost        = c;
+bool loadGraphFromFile(Graph& graph) {
+    ifstream file("DSA_LOGIC/location_data.txt");
+    if (!file.is_open()) {
+        file.open("../DSA_LOGIC/location_data.txt");
     }
-};
+    if (!file.is_open()) {
+        file.open("/Users/aanchalbhaskarshukla/Desktop/Navix/DSA_LOGIC/location_data.txt");
+    }
+    if (!file.is_open()) {
+        return false;
+    }
 
-// ---- Helper: get weight based on preference ----
-int get_weight(const edge& e, const string& pref) {
-    if(pref == "time")     return e.time;
-    if(pref == "cost")     return e.cost;
-    return e.distance;  // default = distance
+    string from, to;
+    int distance = 0;
+    int time = 0;
+    int cost = 0;
+
+    while (file >> from >> to >> distance >> time >> cost) {
+        graph.addUndirectedEdge(from, to, distance, time, cost);
+    }
+    file.close();
+    return true;
 }
 
-// ---- Dijkstra's Algorithm ----
-void dijkstra(string start, string end, string pref, map<string, vector<edge>>& graph) {
+void printNoPath() {
+    cout << "NO_PATH" << endl;
+}
 
-    // Step 1 — Initialize all distances to infinity
-    map<string, int>    dist;
-    map<string, string> parent;
-
-    for(auto& i : graph) {
-        dist[i.first]   = INT_MAX;
-        parent[i.first] = "";
+void printRouteAsJson(
+    const vector<string>& path,
+    int totalDistance,
+    int totalTime,
+    int totalCost
+) {
+    cout << "{" << endl;
+    cout << "  \"path\": [";
+    for (int i = 0; i < static_cast<int>(path.size()); i++) {
+        cout << "\"" << path[i] << "\"";
+        if (i != static_cast<int>(path.size()) - 1) cout << ", ";
     }
+    cout << "]," << endl;
+    cout << "  \"totalDistance\": " << totalDistance << "," << endl;
+    cout << "  \"totalTime\": " << totalTime << "," << endl;
+    cout << "  \"totalCost\": " << totalCost << "," << endl;
+    cout << "  \"stops\": " << static_cast<int>(path.size()) - 2 << endl;
+    cout << "}" << endl;
+}
 
-    // Step 2 — Distance to source is 0
-    dist[start] = 0;
+void dijkstra(const Graph& graph, int startId, int endId, const string& preference) {
+    const int n = graph.size();
+    vector<int> dist(n, INT_MAX);
+    vector<int> parent(n, -1);
 
-    // Step 3 — Insert source into min heap
-    priority_queue<pair<int,string>, vector<pair<int,string>>, greater<pair<int,string>>> pq;
-    pq.push({0, start});
+    dist[startId] = 0;
+    MinHeap heap;
+    heap.push({0, startId});
 
-    // Step 4 — Process nodes
-    while(!pq.empty()) {
-        auto [d, u] = pq.top();
-        pq.pop();
+    while (!heap.empty()) {
+        HeapNode current = heap.top();
+        heap.pop();
 
-        // Skip if we already found a better path
-        if(d > dist[u]) continue;
+        if (current.distance > dist[current.nodeId]) continue;
+        if (current.nodeId == endId) break;
 
-        // If we reached the destination, stop early
-        if(u == end) break;
+        const vector<Edge>& neighbors = graph.neighbors(current.nodeId);
+        for (int i = 0; i < static_cast<int>(neighbors.size()); i++) {
+            const Edge& edge = neighbors[i];
+            int weight = getEdgeWeight(edge, preference);
+            if (dist[current.nodeId] == INT_MAX) continue;
 
-        // Step 5 — Relax all neighbors
-        for(auto& e : graph[u]) {
-            int weight     = get_weight(e, pref);
-            string neighbor = e.destination;
-
-            // If graph has a node not yet in dist, initialize it
-            if(dist.find(neighbor) == dist.end()) {
-                dist[neighbor]   = INT_MAX;
-                parent[neighbor] = "";
-            }
-
-            if(dist[u] != INT_MAX && dist[u] + weight < dist[neighbor]) {
-                dist[neighbor]   = dist[u] + weight;
-                parent[neighbor] = u;
-                pq.push({dist[neighbor], neighbor});
+            int candidate = dist[current.nodeId] + weight;
+            if (candidate < dist[edge.to]) {
+                dist[edge.to] = candidate;
+                parent[edge.to] = current.nodeId;
+                heap.push({candidate, edge.to});
             }
         }
     }
 
-    // Step 6 — Check if destination is reachable
-    if(dist[end] == INT_MAX) {
-        cout << "NO_PATH" << endl;
+    if (dist[endId] == INT_MAX) {
+        printNoPath();
         return;
     }
 
-    // Step 7 — Reconstruct path using parent map
-    vector<string> path;
-    string current = end;
-
-    while(current != "") {
-        path.push_back(current);
-        current = parent[current];
+    vector<int> pathIds;
+    int cursor = endId;
+    while (cursor != -1) {
+        pathIds.push_back(cursor);
+        cursor = parent[cursor];
     }
-    reverse(path.begin(), path.end());
 
-    // Step 8 — Output as JSON for Node.js to parse
-    // Calculate all three totals along the path
-    int totalDistance = 0, totalTime = 0, totalCost = 0;
+    int left = 0;
+    int right = static_cast<int>(pathIds.size()) - 1;
+    while (left < right) {
+        int temp = pathIds[left];
+        pathIds[left] = pathIds[right];
+        pathIds[right] = temp;
+        left++;
+        right--;
+    }
 
-    for(int i = 0; i < (int)path.size() - 1; i++) {
-        string from = path[i];
-        string to   = path[i+1];
-        for(auto& e : graph[from]) {
-            if(e.destination == to) {
-                totalDistance += e.distance;
-                totalTime     += e.time;
-                totalCost     += e.cost;
+    vector<string> path;
+    for (int i = 0; i < static_cast<int>(pathIds.size()); i++) {
+        path.push_back(graph.nodeName(pathIds[i]));
+    }
+
+    int totalDistance = 0;
+    int totalTime = 0;
+    int totalCost = 0;
+
+    for (int i = 0; i < static_cast<int>(pathIds.size()) - 1; i++) {
+        int fromId = pathIds[i];
+        int toId = pathIds[i + 1];
+        const vector<Edge>& neighbors = graph.neighbors(fromId);
+        for (int j = 0; j < static_cast<int>(neighbors.size()); j++) {
+            const Edge& edge = neighbors[j];
+            if (edge.to == toId) {
+                totalDistance += edge.distance;
+                totalTime += edge.time;
+                totalCost += edge.cost;
                 break;
             }
         }
     }
 
-    // Step 9 — Print JSON
-    cout << "{" << endl;
-    cout << "  \"path\": [";
-    for(int i = 0; i < (int)path.size(); i++) {
-        cout << "\"" << path[i] << "\"";
-        if(i != (int)path.size()-1) cout << ", ";
-    }
-    cout << "]," << endl;
-    cout << "  \"totalDistance\": " << totalDistance << "," << endl;
-    cout << "  \"totalTime\": "     << totalTime     << "," << endl;
-    cout << "  \"totalCost\": "     << totalCost     << "," << endl;
-    cout << "  \"stops\": "         << (int)path.size() - 2 << endl;
-    cout << "}" << endl;
+    printRouteAsJson(path, totalDistance, totalTime, totalCost);
 }
 
 int main() {
-    // Step 1 — Load graph from file
-    map<string, vector<edge>> graph;
-    ifstream file("/Users/aanchalbhaskarshukla/Desktop/NAVIX/DSA_LOGIC/location_data.txt");
-
-    if(!file.is_open()) {
+    Graph graph;
+    if (!loadGraphFromFile(graph)) {
         cerr << "Error: Could not open location_data.txt" << endl;
         return 1;
     }
 
-    string src, dest;
-    int dist, t, c;
+    string source;
+    string destination;
+    string preference;
 
-    while(file >> src >> dest >> dist >> t >> c) {
-        graph[src].push_back(edge(dest, dist, t, c));
-        graph[dest].push_back(edge(src, dist, t, c)); // undirected graph
-    }
-    file.close();
-
-    // Step 2 — Take input (from CLI args or cin)
-    string start, end, pref;
-
-    // If called from Node.js with arguments: ./navix_engine Delhi Mumbai distance
-    if(false) {
-        // placeholder — see below for CLI args version
-    }
-
-    if(!(cin >> start >> end >> pref)) {
+    if (!(cin >> source >> destination >> preference)) {
         cerr << "Error: expected input format -> <source> <destination> <preference>" << endl;
         return 1;
     }
 
-    // Step 3 — Validate preference input
-    if(pref != "distance" && pref != "time" && pref != "cost") {
+    if (preference != "distance" && preference != "time" && preference != "cost") {
         cerr << "Error: preference must be distance, time, or cost" << endl;
         return 1;
     }
 
-    // Step 4 — Validate source and destination exist in graph
-    if(graph.find(start) == graph.end()) {
-        cout << "NO_PATH" << endl;
-        return 0;
-    }
-    if(graph.find(end) == graph.end()) {
-        cout << "NO_PATH" << endl;
+    int sourceId = graph.findNode(source);
+    int destinationId = graph.findNode(destination);
+
+    if (sourceId == -1 || destinationId == -1) {
+        printNoPath();
         return 0;
     }
 
-    // Step 5 — Run Dijkstra
-    dijkstra(start, end, pref, graph);
-
+    dijkstra(graph, sourceId, destinationId, preference);
     return 0;
 }
