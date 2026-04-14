@@ -60,7 +60,7 @@ router.post("/signup", async (req, res) => {
 
         setAuthCookie(res, user);
         await moveGuestHistoryToUser(req.cookies.guestId, user._id);
-        return res.redirect("/historfy");
+        return res.redirect("/history");
     } catch (_) {
         return res.redirect("/signup?error=Signup%20failed");
     }

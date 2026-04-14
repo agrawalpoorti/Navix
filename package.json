@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "start": "node Navix/app.js",
+    "dev": "nodemon Navix/app.js"
+  },
   "dependencies": {
     "nodemon": "^3.1.14"
   }
