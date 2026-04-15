@@ -6,11 +6,23 @@ const path = require('path');
 const RouteHistory = require('../models/RouteHistory');
 const Feedback = require('../models/Feedback');
 
-const enginePath = '/Users/aanchalbhaskarshukla/Desktop/Navix/DSA_LOGIC/navix_engine';
+const enginePath = process.env.ENGINE_PATH || path.join(__dirname, '../../DSA_LOGIC/navix_engine');
 const geocodeCache = new Map();
+const legLiveCache = new Map();
+const httpTimeoutMs = Number(process.env.HTTP_TIMEOUT_MS || 12000);
+const httpRetryCount = Math.max(1, Number(process.env.HTTP_RETRY_COUNT || 3));
+const appUserAgent = process.env.APP_USER_AGENT || 'Navix/1.0 (Educational Project)';
+const localContactEmail = process.env.CONTACT_EMAIL || '';
+const osrmBaseUrls = [
+    process.env.OSRM_BASE_URL || 'https://router.project-osrm.org',
+    'https://routing.openstreetmap.de/routed-car'
+];
 
 function runEngineRoute(source, destination, preference) {
     return new Promise((resolve, reject) => {
+        if (!fs.existsSync(enginePath)) {
+            return reject(new Error(`Engine binary not found at: ${enginePath}`));
+        }
         const proc = spawn(enginePath);
         let output = '';
         let errorOutput = '';
@@ -123,56 +135,136 @@ function cityQuery(city) {
     return city;
 }
 
-async function geocodeCity(city) {
-    if (geocodeCache.has(city)) return geocodeCache.get(city);
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = httpTimeoutMs) {
     if (typeof fetch !== 'function') throw new Error('Fetch API unavailable in current Node runtime');
-
-    const query = encodeURIComponent(cityQuery(city));
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${query}`;
-
-    const response = await fetch(url, {
-        headers: { 'User-Agent': 'Navix/1.0 (Educational Project)' }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Geocoding failed for ${city}: HTTP ${response.status}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
     }
+}
 
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) {
+async function fetchJsonWithRetry(url, options = {}, retries = httpRetryCount) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const response = await fetchWithTimeout(url, options, httpTimeoutMs);
+            if (!response.ok) {
+                const canRetry = response.status === 429 || response.status >= 500;
+                if (canRetry && attempt < retries) {
+                    await sleep(250 * attempt);
+                    continue;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return await response.json();
+        } catch (e) {
+            lastError = e;
+            if (attempt < retries) {
+                await sleep(250 * attempt);
+            }
+        }
+    }
+    throw lastError || new Error('Request failed');
+}
+
+async function geocodeViaNominatim(city) {
+    const query = encodeURIComponent(cityQuery(city));
+    const emailParam = localContactEmail ? `&email=${encodeURIComponent(localContactEmail)}` : '';
+    const urls = [
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&q=${query}${emailParam}`,
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${query}${emailParam}`
+    ];
+
+    let lastError = null;
+    for (const url of urls) {
+        try {
+            const data = await fetchJsonWithRetry(url, {
+                headers: {
+                    'User-Agent': appUserAgent,
+                    'Accept-Language': 'en'
+                }
+            });
+            if (Array.isArray(data) && data.length) {
+                return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
+            }
+            lastError = new Error(`No coordinates found for ${city}`);
+        } catch (e) {
+            lastError = e;
+        }
+    }
+    throw lastError || new Error(`No coordinates found for ${city}`);
+}
+
+async function geocodeViaOpenMeteo(city) {
+    const query = encodeURIComponent(cityQuery(city));
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${query}&count=1&language=en&format=json`;
+    const data = await fetchJsonWithRetry(url);
+    if (!data || !Array.isArray(data.results) || !data.results.length) {
         throw new Error(`No coordinates found for ${city}`);
     }
-
-    const point = {
-        lat: Number(data[0].lat),
-        lon: Number(data[0].lon)
+    return {
+        lat: Number(data.results[0].latitude),
+        lon: Number(data.results[0].longitude)
     };
+}
+
+async function geocodeCity(city) {
+    if (geocodeCache.has(city)) return geocodeCache.get(city);
+    let point = null;
+    try {
+        point = await geocodeViaNominatim(city);
+    } catch (_) {
+        point = await geocodeViaOpenMeteo(city);
+    }
     geocodeCache.set(city, point);
     return point;
 }
 
 async function getLegLiveStats(fromCity, toCity) {
-    if (typeof fetch !== 'function') throw new Error('Fetch API unavailable in current Node runtime');
+    const cacheKey = `${fromCity}|${toCity}`;
+    if (legLiveCache.has(cacheKey)) return legLiveCache.get(cacheKey);
 
     const from = await geocodeCity(fromCity);
     const to = await geocodeCity(toCity);
-    const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false&alternatives=false&steps=false`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`OSRM failed for ${fromCity} -> ${toCity}: HTTP ${response.status}`);
+    let lastError = null;
+    for (const baseUrl of osrmBaseUrls) {
+        const url = `${baseUrl}/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false&alternatives=false&steps=false`;
+        try {
+            const data = await fetchJsonWithRetry(url);
+            if (data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
+                throw new Error('No OSRM route');
+            }
+            const route = data.routes[0];
+            const stats = {
+                distanceMeters: Number(route.distance || 0),
+                durationSeconds: Number(route.duration || 0)
+            };
+            legLiveCache.set(cacheKey, stats);
+            return stats;
+        } catch (e) {
+            lastError = e;
+        }
     }
+    throw new Error(`OSRM failed for ${fromCity} -> ${toCity}: ${lastError ? lastError.message : 'Unknown error'}`);
+}
 
-    const data = await response.json();
-    if (data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
-        throw new Error(`OSRM returned no route for ${fromCity} -> ${toCity}`);
+async function getLegLiveStatsUndirected(fromCity, toCity) {
+    try {
+        return await getLegLiveStats(fromCity, toCity);
+    } catch (forwardError) {
+        try {
+            return await getLegLiveStats(toCity, fromCity);
+        } catch (reverseError) {
+            throw new Error(`${forwardError.message}; ${reverseError.message}`);
+        }
     }
-
-    const route = data.routes[0];
-    return {
-        distanceMeters: Number(route.distance || 0),
-        durationSeconds: Number(route.duration || 0)
-    };
 }
 
 async function enrichWithLiveData(engineResult) {
@@ -187,13 +279,35 @@ async function enrichWithLiveData(engineResult) {
         };
     }
 
+    const staticLegMap = new Map();
+    const staticLegKey = (a, b) => [a, b].sort().join('|');
+    graphData.edges.forEach((edge) => {
+        staticLegMap.set(staticLegKey(edge.from, edge.to), {
+            distanceMeters: Number(edge.distance || 0) * 1000,
+            durationSeconds: Number(edge.time || 0) * 60
+        });
+    });
+
     let totalDistanceMeters = 0;
     let totalDurationSeconds = 0;
+    let liveLegs = 0;
+    let fallbackLegs = 0;
 
     for (let i = 0; i < pathArr.length - 1; i++) {
-        const leg = await getLegLiveStats(pathArr[i], pathArr[i + 1]);
-        totalDistanceMeters += leg.distanceMeters;
-        totalDurationSeconds += leg.durationSeconds;
+        const from = pathArr[i];
+        const to = pathArr[i + 1];
+        try {
+            const leg = await getLegLiveStatsUndirected(from, to);
+            totalDistanceMeters += leg.distanceMeters;
+            totalDurationSeconds += leg.durationSeconds;
+            liveLegs += 1;
+        } catch (_) {
+            const fallback = staticLegMap.get(staticLegKey(from, to));
+            if (!fallback) throw new Error(`No live or static leg data for ${from} -> ${to}`);
+            totalDistanceMeters += fallback.distanceMeters;
+            totalDurationSeconds += fallback.durationSeconds;
+            fallbackLegs += 1;
+        }
     }
 
     const totalDistance = Math.max(1, Math.round(totalDistanceMeters / 1000));
@@ -208,8 +322,11 @@ async function enrichWithLiveData(engineResult) {
         totalDistance,
         totalTime,
         totalCost,
-        liveData: true,
-        liveSource: 'nominatim+osrm'
+        liveData: liveLegs > 0,
+        liveSource: liveLegs > 0 ? 'nominatim+osrm' : 'fallback',
+        liveNote: fallbackLegs > 0
+            ? `Live data used for ${liveLegs} leg(s), static fallback for ${fallbackLegs} leg(s).`
+            : undefined
     };
 }
 
@@ -268,6 +385,46 @@ router.get('/graph-meta', (req, res) => {
         cities: graphData.cities,
         edges: graphData.edges
     });
+});
+
+router.post('/geocode-batch', async (req, res) => {
+    try {
+        const rawCities = Array.isArray(req.body?.cities) ? req.body.cities : [];
+        const cities = [...new Set(rawCities.map((c) => String(c || '').trim()).filter(Boolean))].slice(0, 100);
+        if (!cities.length) return res.status(400).json({ error: 'No cities provided' });
+
+        const coords = {};
+        const failed = [];
+        for (const city of cities) {
+            try {
+                const point = await geocodeCity(city);
+                coords[city] = [point.lat, point.lon];
+            } catch (_) {
+                failed.push(city);
+            }
+        }
+
+        return res.status(200).json({ coords, failed });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to geocode cities', details: e.message });
+    }
+});
+
+router.get('/live-health', async (_req, res) => {
+    try {
+        const leg = await getLegLiveStatsUndirected('Delhi', 'Agra');
+        return res.status(200).json({
+            ok: true,
+            sample: {
+                from: 'Delhi',
+                to: 'Agra',
+                distanceMeters: leg.distanceMeters,
+                durationSeconds: leg.durationSeconds
+            }
+        });
+    } catch (e) {
+        return res.status(500).json({ ok: false, error: e.message });
+    }
 });
 
 router.get('/history', async (req, res) => {
