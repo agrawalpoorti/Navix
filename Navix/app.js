@@ -7,10 +7,12 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const isProduction = process.env.NODE_ENV === "production";
 
 app.set("view engine", "ejs");
 app.engine("ejs", ejsMate);
 app.set("views", path.join(__dirname, "views"));
+app.set("trust proxy", 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -32,6 +34,7 @@ app.use((req, res, next) => {
         res.cookie("guestId", guestId, {
             httpOnly: true,
             sameSite: "lax",
+            secure: isProduction,
             maxAge: 1000 * 60 * 60 * 24 * 365
         });
     }
@@ -69,6 +72,7 @@ const authRoutes = require('./routes/auth');
 app.use('/auth', authRoutes);
 
 // Page Routes
+app.get("/healthz", (_req, res) => res.status(200).json({ ok: true }));
 app.get("/",        (req, res) => res.render("parts/home.ejs"));
 app.get("/login",   (req, res) => res.render("parts/login.ejs"));
 app.get("/signup",  (req, res) => res.render("parts/signup.ejs"));

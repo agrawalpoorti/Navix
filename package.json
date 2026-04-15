@@ -1,9 +1,11 @@
 {
   "scripts": {
-    "start": "node Navix/app.js",
-    "dev": "nodemon Navix/app.js"
+    "postinstall": "npm install --prefix Navix && npm --prefix Navix run build:engine",
+    "start": "npm --prefix Navix start",
+    "dev": "npm --prefix Navix run dev"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "nodemon": "^3.1.14"
   }
 }

@@ -6,6 +6,7 @@ const RouteHistory = require("../models/RouteHistory");
 
 const router = express.Router();
 const jwtSecret = process.env.JWT_SECRET || "navix-dev-secret";
+const isProduction = process.env.NODE_ENV === "production";
 
 function setAuthCookie(res, user) {
     const token = jwt.sign(
@@ -21,6 +22,7 @@ function setAuthCookie(res, user) {
     res.cookie("authToken", token, {
         httpOnly: true,
         sameSite: "lax",
+        secure: isProduction,
         maxAge: 1000 * 60 * 60 * 24 * 7
     });
 }
@@ -54,8 +56,7 @@ router.post("/signup", async (req, res) => {
         const user = await User.create({
             name: String(name).trim(),
             email: normalizedEmail,
-            passwordHash,
-            password
+            passwordHash
         });
 
         setAuthCookie(res, user);

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: navix
+    env: node
+    rootDir: Navix
+    buildCommand: npm install && npm run build:engine
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
