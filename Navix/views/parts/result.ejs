@@ -35,13 +35,27 @@
 
     <div class="path-display" id="pathDisplay"></div>
 
+    <div class="other-routes-card">
+        <h2 class="route-viz-title">Other Possible Paths</h2>
+        <p class="route-viz-subtitle">Optimal path is selected by Dijkstra. Alternatives are shown for comparison.</p>
+        <div class="other-routes-list" id="otherRoutesList"></div>
+    </div>
+
     <div class="map-card">
         <h2 class="route-viz-title">Route On Map</h2>
         <p class="route-viz-subtitle">Geographic path rendered with OpenStreetMap.</p>
+        <div class="path-legend">
+            <span class="legend-item"><span class="legend-line legend-optimal"></span>Optimal path</span>
+            <span class="legend-item"><span class="legend-line legend-alt"></span>Other paths</span>
+        </div>
         <div id="route-map"></div>
         <p class="map-fallback" id="mapFallback"></p>
     </div>
 
+    <div class="path-legend">
+        <span class="legend-item"><span class="legend-line legend-optimal"></span>Optimal graph edges</span>
+        <span class="legend-item"><span class="legend-line legend-alt"></span>Other route edges</span>
+    </div>
     <div id="graph-container"></div>
 
     <button class="submit-btn" onclick="window.location.href='/plan'">Plan Another Route</button>
@@ -73,7 +87,11 @@
         time: { accent: '#34D399', highlight: '#6EE7B7' },
         cost: { accent: '#F59E0B', highlight: '#FCD34D' }
     };
+    const alternativePalette = ['#fb7185', '#f97316', '#a78bfa', '#22d3ee'];
+    const alternativeGraphColor = '#fb923c';
     const palette = themePalette[activePreference];
+    document.body.style.setProperty('--legend-optimal', palette.highlight);
+    document.body.style.setProperty('--legend-alt', alternativeGraphColor);
     const graphMeta = result.graph || {};
     const allEdgesData = Array.isArray(graphMeta.edges) ? graphMeta.edges : [];
     const allCities = Array.isArray(graphMeta.cities) ? graphMeta.cities : [];
@@ -97,22 +115,172 @@
     });
 
     const getLeg = (from, to) => edgeMap.get(edgeKey(from, to));
+    const sourceCity = query.source || path[0];
+    const destinationCity = query.destination || path[path.length - 1];
 
-    async function geocodeCityForMap(city) {
-        if (mapGeocodeCache.has(city)) return mapGeocodeCache.get(city);
-        const query = encodeURIComponent(`${city}, India`);
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${query}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Geocoding failed for ${city}`);
-        const data = await response.json();
-        if (!Array.isArray(data) || data.length === 0) throw new Error(`Coordinates unavailable for ${city}`);
+    function buildAdjacencyList(edges) {
+        const adjacency = new Map();
+        edges.forEach((edge) => {
+            if (!adjacency.has(edge.from)) adjacency.set(edge.from, []);
+            if (!adjacency.has(edge.to)) adjacency.set(edge.to, []);
 
-        const point = [Number(data[0].lat), Number(data[0].lon)];
-        mapGeocodeCache.set(city, point);
-        return point;
+            adjacency.get(edge.from).push({
+                to: edge.to,
+                distance: Number(edge.distance || 0),
+                time: Number(edge.time || 0),
+                cost: Number(edge.cost || 0)
+            });
+            adjacency.get(edge.to).push({
+                to: edge.from,
+                distance: Number(edge.distance || 0),
+                time: Number(edge.time || 0),
+                cost: Number(edge.cost || 0)
+            });
+        });
+        return adjacency;
     }
 
-    async function renderRouteMap(pathCities, accentColor) {
+    function pathToKey(routePath) {
+        return routePath.join('>');
+    }
+
+    function findAlternativePaths(source, destination, optimalPath, maxCount = 3) {
+        const adjacency = buildAdjacencyList(allEdgesData);
+        if (!adjacency.has(source) || !adjacency.has(destination)) return [];
+
+        const preferenceField = activePreference === 'time'
+            ? 'time'
+            : activePreference === 'cost'
+                ? 'cost'
+                : 'distance';
+
+        const optimalKey = pathToKey(optimalPath);
+        const candidates = [];
+        const maxDepth = Math.min(allCities.length, Math.max(optimalPath.length + 3, 6));
+        const maxSearchStates = 12000;
+        let searchStates = 0;
+
+        function dfs(current, visited, currentPath, totals) {
+            if (searchStates >= maxSearchStates) return;
+            searchStates++;
+
+            if (currentPath.length > maxDepth) return;
+            if (current === destination) {
+                const key = pathToKey(currentPath);
+                if (key !== optimalKey) {
+                    candidates.push({
+                        path: [...currentPath],
+                        distance: totals.distance,
+                        time: totals.time,
+                        cost: totals.cost
+                    });
+                }
+                return;
+            }
+
+            const neighbors = adjacency.get(current) || [];
+            for (let i = 0; i < neighbors.length; i++) {
+                const neighbor = neighbors[i];
+                if (visited.has(neighbor.to)) continue;
+
+                visited.add(neighbor.to);
+                currentPath.push(neighbor.to);
+                dfs(
+                    neighbor.to,
+                    visited,
+                    currentPath,
+                    {
+                        distance: totals.distance + neighbor.distance,
+                        time: totals.time + neighbor.time,
+                        cost: totals.cost + neighbor.cost
+                    }
+                );
+                currentPath.pop();
+                visited.delete(neighbor.to);
+            }
+        }
+
+        const visited = new Set([source]);
+        dfs(source, visited, [source], { distance: 0, time: 0, cost: 0 });
+
+        const seen = new Set();
+        const unique = [];
+        candidates
+            .sort((a, b) => {
+                if (a[preferenceField] !== b[preferenceField]) return a[preferenceField] - b[preferenceField];
+                if (a.path.length !== b.path.length) return a.path.length - b.path.length;
+                return a.distance - b.distance;
+            })
+            .forEach((route) => {
+                const key = pathToKey(route.path);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    unique.push(route);
+                }
+            });
+
+        return unique.slice(0, maxCount);
+    }
+
+    const alternativeRoutes = findAlternativePaths(sourceCity, destinationCity, path, 3);
+
+    async function geocodeCitiesForMap(cities) {
+        const uniqueCities = [...new Set((cities || []).filter(Boolean))];
+        const missing = uniqueCities.filter((city) => !mapGeocodeCache.has(city));
+
+        if (missing.length) {
+            const response = await fetch('/api/geocode-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cities: missing })
+            });
+            if (!response.ok) throw new Error(`Geocoding service failed: HTTP ${response.status}`);
+
+            const payload = await response.json();
+            const coords = payload?.coords || {};
+            Object.entries(coords).forEach(([city, point]) => {
+                if (Array.isArray(point) && point.length === 2) {
+                    mapGeocodeCache.set(city, [Number(point[0]), Number(point[1])]);
+                }
+            });
+        }
+
+        const cityToCoord = new Map();
+        uniqueCities.forEach((city) => {
+            if (mapGeocodeCache.has(city)) {
+                cityToCoord.set(city, mapGeocodeCache.get(city));
+            }
+        });
+        return cityToCoord;
+    }
+
+    function renderAlternativeRoutes(routes) {
+        const otherRoutesList = document.getElementById('otherRoutesList');
+        otherRoutesList.innerHTML = '';
+
+        if (!routes.length) {
+            otherRoutesList.innerHTML = '<p class="no-other-routes">No practical alternate paths found in the current graph.</p>';
+            return;
+        }
+
+        routes.forEach((route, index) => {
+            const item = document.createElement('div');
+            item.className = 'other-route-item';
+            const color = alternativePalette[index % alternativePalette.length];
+
+            item.innerHTML = `
+                <div class="other-route-head">
+                    <span class="route-chip" style="background:${color};"></span>
+                    <p>Alternative ${index + 1}</p>
+                </div>
+                <p class="other-route-path">${route.path.join(' → ')}</p>
+                <p class="other-route-meta">${route.distance} km · ${route.time} min · ₹${route.cost}</p>
+            `;
+            otherRoutesList.appendChild(item);
+        });
+    }
+
+    async function renderRouteMap(pathCities, alternatives, accentColor) {
         const fallbackEl = document.getElementById('mapFallback');
         const mapContainer = document.getElementById('route-map');
 
@@ -126,11 +294,9 @@
         }
 
         try {
-            const coords = [];
-            for (const city of pathCities) {
-                const point = await geocodeCityForMap(city);
-                coords.push(point);
-            }
+            const routePaths = [pathCities, ...alternatives.map((route) => route.path)];
+            const allCitiesInRoutes = [...new Set(routePaths.flat())];
+            const cityToCoord = await geocodeCitiesForMap(allCitiesInRoutes);
 
             const map = L.map(mapContainer, { zoomControl: true });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -138,26 +304,52 @@
                 attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
 
-            L.polyline(coords, {
+            const allCoordsForBounds = [];
+
+            alternatives.forEach((route, index) => {
+                const altCoords = route.path
+                    .map((city) => cityToCoord.get(city))
+                    .filter(Boolean);
+                if (altCoords.length < 2) return;
+
+                allCoordsForBounds.push(...altCoords);
+                L.polyline(altCoords, {
+                    color: alternativePalette[index % alternativePalette.length],
+                    weight: 3,
+                    opacity: 0.65,
+                    dashArray: '8 6'
+                }).addTo(map);
+            });
+
+            const optimalPoints = pathCities
+                .map((city) => ({ city, coord: cityToCoord.get(city) }))
+                .filter((item) => Array.isArray(item.coord));
+            const optimalCoords = optimalPoints.map((item) => item.coord);
+
+            if (optimalCoords.length < 2) {
+                fallbackEl.textContent = 'Map unavailable: not enough geocoded points for this route.';
+                return;
+            }
+
+            L.polyline(optimalCoords, {
                 color: accentColor,
                 weight: 5,
-                opacity: 0.9
+                opacity: 0.92
             }).addTo(map);
 
-            coords.forEach((coord, index) => {
-                const city = pathCities[index];
-                const marker = L.circleMarker(coord, {
-                    radius: index === 0 || index === coords.length - 1 ? 7 : 5,
+            optimalPoints.forEach((item, index) => {
+                const marker = L.circleMarker(item.coord, {
+                    radius: index === 0 || index === optimalCoords.length - 1 ? 7 : 5,
                     color: '#ffffff',
                     weight: 2,
                     fillColor: accentColor,
                     fillOpacity: 0.95
                 }).addTo(map);
 
-                marker.bindPopup(`<b>${city}</b><br>Stop ${index + 1}`);
+                marker.bindPopup(`<b>${item.city}</b><br>Stop ${index + 1}`);
             });
 
-            map.fitBounds(coords, { padding: [30, 30] });
+            map.fitBounds([...allCoordsForBounds, ...optimalCoords], { padding: [30, 30] });
             fallbackEl.textContent = '';
         } catch (e) {
             fallbackEl.textContent = `Map unavailable: ${e.message}`;
@@ -243,6 +435,8 @@
         legsGrid.appendChild(card);
     }
 
+    renderAlternativeRoutes(alternativeRoutes);
+
     if (window.vis && window.vis.Network && allCities.length) {
         const nodes = new vis.DataSet(allCities.map(city => ({
             id: city,
@@ -260,6 +454,19 @@
             width: 1.5
         })));
 
+        const optimalEdgeKeys = new Set();
+        const alternateEdgeKeys = new Set();
+
+        for (let i = 0; i < path.length - 1; i++) {
+            optimalEdgeKeys.add(edgeKey(path[i], path[i + 1]));
+        }
+
+        alternativeRoutes.forEach((route) => {
+            for (let i = 0; i < route.path.length - 1; i++) {
+                alternateEdgeKeys.add(edgeKey(route.path[i], route.path[i + 1]));
+            }
+        });
+
         path.forEach(city => {
             nodes.update({
                 id: city,
@@ -268,15 +475,14 @@
             });
         });
 
-        for (let i = 0; i < path.length - 1; i++) {
-            const from = path[i];
-            const to = path[i + 1];
-            edges.forEach(edge => {
-                if ((edge.from === from && edge.to === to) || (edge.from === to && edge.to === from)) {
-                    edges.update({ id: edge.id, color: { color: palette.highlight }, width: 4 });
-                }
-            });
-        }
+        edges.forEach((edge) => {
+            const key = edgeKey(edge.from, edge.to);
+            if (optimalEdgeKeys.has(key)) {
+                edges.update({ id: edge.id, color: { color: palette.highlight }, width: 4, dashes: false });
+            } else if (alternateEdgeKeys.has(key)) {
+                edges.update({ id: edge.id, color: { color: alternativeGraphColor }, width: 2.5, dashes: true });
+            }
+        });
 
         const container = document.getElementById('graph-container');
         new vis.Network(container, { nodes, edges }, {
@@ -289,5 +495,5 @@
             '<p class="graph-fallback">Graph view unavailable, but your path timeline is shown above.</p>';
     }
 
-    renderRouteMap(path, palette.accent);
+    renderRouteMap(path, alternativeRoutes, palette.highlight);
 </script>

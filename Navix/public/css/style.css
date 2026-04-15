@@ -745,6 +745,93 @@ border: solid 1px #38BDF8;
   color: #475569;
 }
 
+.other-routes-card {
+  margin-bottom: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--result-accent-soft);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.other-routes-list {
+  display: grid;
+  gap: 10px;
+}
+
+.other-route-item {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.68);
+  padding: 12px;
+}
+
+.other-route-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.other-route-head p {
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.route-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.other-route-path {
+  color: #cbd5e1;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.other-route-meta {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.no-other-routes {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.path-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.legend-line {
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-optimal {
+  background: var(--legend-optimal, #00e5a8);
+}
+
+.legend-alt {
+  background: var(--legend-alt, #fb923c);
+}
+
 .map-card {
   margin-bottom: 24px;
   background: rgba(255, 255, 255, 0.04);
