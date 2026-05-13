@@ -6,7 +6,16 @@ const path = require('path');
 const RouteHistory = require('../models/RouteHistory');
 const Feedback = require('../models/Feedback');
 
-const enginePath = process.env.ENGINE_PATH || path.join(__dirname, '../../DSA_LOGIC/navix_engine');
+function getDefaultEnginePath() {
+    const basePath = path.join(__dirname, '../../DSA_LOGIC/navix_engine');
+    const windowsPath = `${basePath}.exe`;
+    if (process.platform === 'win32' && fs.existsSync(windowsPath)) {
+        return windowsPath;
+    }
+    return basePath;
+}
+
+const enginePath = process.env.ENGINE_PATH || getDefaultEnginePath();
 const geocodeCache = new Map();
 const legLiveCache = new Map();
 const httpTimeoutMs = Number(process.env.HTTP_TIMEOUT_MS || 12000);
@@ -17,6 +26,131 @@ const osrmBaseUrls = [
     process.env.OSRM_BASE_URL || 'https://router.project-osrm.org',
     'https://routing.openstreetmap.de/routed-car'
 ];
+let warnedAboutNativeFallback = false;
+
+function buildAdjacency(edges) {
+    const adjacency = new Map();
+
+    edges.forEach((edge) => {
+        const from = String(edge.from || '').trim();
+        const to = String(edge.to || '').trim();
+        if (!from || !to) return;
+
+        const normalizedEdge = {
+            to,
+            distance: Number(edge.distance || 0),
+            time: Number(edge.time || 0),
+            cost: Number(edge.cost || 0)
+        };
+        const reverseEdge = {
+            to: from,
+            distance: normalizedEdge.distance,
+            time: normalizedEdge.time,
+            cost: normalizedEdge.cost
+        };
+
+        if (!adjacency.has(from)) adjacency.set(from, []);
+        if (!adjacency.has(to)) adjacency.set(to, []);
+        adjacency.get(from).push(normalizedEdge);
+        adjacency.get(to).push(reverseEdge);
+    });
+
+    return adjacency;
+}
+
+function reconstructRoute(parentMap, source, destination) {
+    const path = [];
+    let cursor = destination;
+
+    while (cursor) {
+        path.push(cursor);
+        if (cursor === source) break;
+        cursor = parentMap.get(cursor);
+    }
+
+    path.reverse();
+    return path[0] === source ? path : [];
+}
+
+function computeRouteInJs(source, destination, preference) {
+    const normalizedSource = String(source || '').trim();
+    const normalizedDestination = String(destination || '').trim();
+    const normalizedPreference = normalizePreference(preference);
+
+    if (!knownCities.has(normalizedSource) || !knownCities.has(normalizedDestination)) {
+        return { noPath: true };
+    }
+
+    const adjacency = buildAdjacency(graphData.edges);
+    if (!adjacency.has(normalizedSource) || !adjacency.has(normalizedDestination)) {
+        return { noPath: true };
+    }
+
+    const distances = new Map([[normalizedSource, 0]]);
+    const parentMap = new Map();
+    const visited = new Set();
+    const queue = [{ city: normalizedSource, weight: 0 }];
+
+    while (queue.length) {
+        queue.sort((a, b) => a.weight - b.weight);
+        const current = queue.shift();
+        if (!current || visited.has(current.city)) continue;
+
+        visited.add(current.city);
+        if (current.city === normalizedDestination) break;
+
+        const neighbors = adjacency.get(current.city) || [];
+        neighbors.forEach((neighbor) => {
+            if (visited.has(neighbor.to)) return;
+            const edgeWeight = Number(neighbor[normalizedPreference] || 0);
+            const nextWeight = current.weight + edgeWeight;
+            const knownWeight = distances.has(neighbor.to) ? distances.get(neighbor.to) : Infinity;
+
+            if (nextWeight < knownWeight) {
+                distances.set(neighbor.to, nextWeight);
+                parentMap.set(neighbor.to, current.city);
+                queue.push({ city: neighbor.to, weight: nextWeight });
+            }
+        });
+    }
+
+    if (!distances.has(normalizedDestination)) {
+        return { noPath: true };
+    }
+
+    const path = reconstructRoute(parentMap, normalizedSource, normalizedDestination);
+    if (path.length < 2) {
+        return { noPath: true };
+    }
+
+    let totalDistance = 0;
+    let totalTime = 0;
+    let totalCost = 0;
+
+    for (let i = 0; i < path.length - 1; i++) {
+        const from = path[i];
+        const to = path[i + 1];
+        const leg = (adjacency.get(from) || []).find((edge) => edge.to === to);
+        if (!leg) {
+            return { noPath: true };
+        }
+        totalDistance += Number(leg.distance || 0);
+        totalTime += Number(leg.time || 0);
+        totalCost += Number(leg.cost || 0);
+    }
+
+    return {
+        noPath: false,
+        result: {
+            path,
+            totalDistance,
+            totalTime,
+            totalCost,
+            stops: Math.max(path.length - 2, 0)
+        },
+        source: 'js-fallback'
+    };
+}
 
 function runEngineRoute(source, destination, preference) {
     return new Promise((resolve, reject) => {
@@ -55,6 +189,18 @@ function runEngineRoute(source, destination, preference) {
             }
         });
     });
+}
+
+async function runRoute(source, destination, preference) {
+    try {
+        return await runEngineRoute(source, destination, preference);
+    } catch (error) {
+        if (!warnedAboutNativeFallback) {
+            warnedAboutNativeFallback = true;
+            console.warn(`Native route engine unavailable, using JS fallback. Reason: ${error.message}`);
+        }
+        return computeRouteInJs(source, destination, preference);
+    }
 }
 
 function loadKnownCities() {
@@ -340,7 +486,7 @@ router.post('/route', (req, res) => {
         return res.status(400).json({ error: 'Source and destination cannot be same' });
     }
 
-    runEngineRoute(source, destination, preference)
+    runRoute(source, destination, preference)
         .then((payload) => {
             if (payload.noPath) return res.status(404).json({ error: 'No route found' });
             return res.status(200).json(withGraph(payload.result));
@@ -361,7 +507,7 @@ router.post('/route-live', async (req, res) => {
     }
 
     try {
-        const payload = await runEngineRoute(source, destination, preference);
+        const payload = await runRoute(source, destination, preference);
         if (payload.noPath) return res.status(404).json({ error: 'No route found' });
 
         try {
