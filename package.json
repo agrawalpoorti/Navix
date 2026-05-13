@@ -1,4 +1,17 @@
 {
+  "name": "navix-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:app": "npm install --prefix Navix",
+    "build:engine": "g++ -std=c++17 -O2 DSA_LOGIC/main.cpp -o DSA_LOGIC/navix_engine",
+    "build": "npm run install:app && npm run build:engine",
+    "start": "node Navix/app.js",
+    "check": "node --check Navix/app.js && node --check Navix/routes/api.js && node --check Navix/routes/auth.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "nodemon": "^3.1.14"
   }

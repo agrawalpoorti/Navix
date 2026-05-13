@@ -170,7 +170,7 @@ CONTACT_EMAIL=your_email@example.com
 
 ```bash
 cd Navix
-node app.js
+npm start
 ```
 
 App runs at:
@@ -178,6 +178,52 @@ App runs at:
 ```text
 http://localhost:8080
 ```
+
+You can also run from the repository root:
+
+```bash
+npm start
+```
+
+## Deployment
+
+This project is prepared for Node.js hosting platforms such as Render, Railway, Fly.io, or any server that can run npm scripts.
+
+### Required environment variables
+
+Use `Navix/.env.example` as the template. In production, set at least:
+
+```env
+NODE_ENV=production
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_long_random_secret
+CONTACT_EMAIL=your_email@example.com
+APP_USER_AGENT=Navix/1.0 (your_email@example.com)
+```
+
+The app reads the platform-provided `PORT` automatically. Do not commit real secrets.
+
+### Build and start commands
+
+From the repository root:
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+The build command installs the nested Express app dependencies and compiles the C++ routing engine. If the native engine is unavailable, the backend still keeps route planning available through the JavaScript fallback.
+
+### Render
+
+`render.yaml` is included for blueprint deployment:
+
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Health check path: `/health`
+
+Set `MONGO_URI`, `JWT_SECRET`, and `CONTACT_EMAIL` in the Render dashboard before deploying.
 
 ## API Summary
 
@@ -267,7 +313,6 @@ This project uses backend batch geocoding (`/api/geocode-batch`) with client fal
 
 ## Current Notes
 
-- Server port is currently hardcoded to `8080` in `Navix/app.js`.
 - `User` schema currently stores both `passwordHash` and `password`; storing raw password is not recommended.
 
 ## Team

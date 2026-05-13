@@ -14,9 +14,6 @@ bool loadGraphFromFile(Graph& graph) {
         file.open("../DSA_LOGIC/location_data.txt");
     }
     if (!file.is_open()) {
-        file.open("/Users/aanchalbhaskarshukla/Desktop/Navix/DSA_LOGIC/location_data.txt");
-    }
-    if (!file.is_open()) {
         return false;
     }
 
