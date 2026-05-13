@@ -54,14 +54,14 @@ router.post("/signup", async (req, res) => {
         const user = await User.create({
             name: String(name).trim(),
             email: normalizedEmail,
-            passwordHash,
-            password
+            passwordHash
         });
 
         setAuthCookie(res, user);
         await moveGuestHistoryToUser(req.cookies.guestId, user._id);
-        return res.redirect("/historfy");
-    } catch (_) {
+        return res.redirect("/history");
+    } catch (err) {
+        console.error("Signup failed:", err.message);
         return res.redirect("/signup?error=Signup%20failed");
     }
 });
@@ -79,7 +79,24 @@ router.post("/login", async (req, res) => {
             return res.redirect("/login?error=Invalid%20email%20or%20password");
         }
 
-        const validPassword = await bcrypt.compare(String(password), user.passwordHash);
+        let validPassword = false;
+        if (user.passwordHash) {
+            try {
+                validPassword = await bcrypt.compare(String(password), user.passwordHash);
+            } catch (_) {
+                validPassword = false;
+            }
+        }
+
+        if (!validPassword && user.password) {
+            validPassword = String(password) === String(user.password);
+            if (validPassword) {
+                user.passwordHash = await bcrypt.hash(String(password), 10);
+                user.password = undefined;
+                await user.save();
+            }
+        }
+
         if (!validPassword) {
             return res.redirect("/login?error=Invalid%20email%20or%20password");
         }
@@ -87,7 +104,8 @@ router.post("/login", async (req, res) => {
         setAuthCookie(res, user);
         await moveGuestHistoryToUser(req.cookies.guestId, user._id);
         return res.redirect("/history");
-    } catch (_) {
+    } catch (err) {
+        console.error("Login failed:", err.message);
         return res.redirect("/login?error=Login%20failed");
     }
 });

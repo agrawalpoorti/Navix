@@ -26,7 +26,7 @@ mongoose
     feedback();
 
     const past = async() => {
-        User.deleteMany({})
+        RouteHistory.deleteMany({})
         .then(() => console.log("Existing history deleted"))
         .catch((err) => console.error("Error deleting history:", err.message));
         console.log("DataBase is empty now..");
